@@ -1,0 +1,1506 @@
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, FileText, Download, Edit, Plus, Eye, Check, X, ChevronDown, ChevronRight, Users, Settings } from "lucide-react";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+interface DocumentFile {
+  id: string;
+  fileName: string;
+  originalName: string;
+  fileType: 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'image' | 'other';
+  fileSize: number;
+  uploadDate: string;
+  uploadedBy: string;
+  filePath: string;
+  thumbnail?: string;
+}
+
+interface VDCRRecord {
+  id: string;
+  srNo: string;
+  equipmentTagNo: string[];
+  mfgSerialNo: string[];
+  jobNo: string[];
+  clientDocNo: string;
+  internalDocNo: string;
+  documentName: string;
+  revision: string;
+  codeStatus: string;
+  status: 'approved' | 'sent-for-approval' | 'received-for-comment' | 'pending' | 'rejected';
+  lastUpdate: string;
+  remarks?: string;
+  updatedBy?: string;
+  documentFile?: DocumentFile;
+  documentUrl?: string;
+}
+
+interface Equipment {
+  tagNo: string;
+  mfgSerialNo: string;
+  jobNo: string;
+  type: string;
+  location: string;
+  status: string;
+}
+
+interface ProjectsVDCRProps {
+  projectName: string;
+  onBack?: () => void;
+  onViewDetails?: () => void;
+  onViewEquipment?: () => void;
+}
+
+const ProjectsVDCR = ({ projectName, onBack, onViewDetails, onViewEquipment }: ProjectsVDCRProps) => {
+  const [selectedVDCR, setSelectedVDCR] = useState<string | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingVDCR, setEditingVDCR] = useState<VDCRRecord | null>(null);
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [selectedEquipments, setSelectedEquipments] = useState<string[]>([]);
+  const [expandedEquipmentTypes, setExpandedEquipmentTypes] = useState<string[]>([]);
+  
+  // Form state for editing
+  const [formData, setFormData] = useState({
+    srNo: '',
+    revision: '',
+    documentName: '',
+    clientDocNo: '',
+    internalDocNo: '',
+    codeStatus: '',
+    status: '',
+    remarks: ''
+  });
+  
+  // Add user info for tracking who made updates
+  const [currentUser] = useState('John Doe'); // In real app, this would come from auth system
+  
+  // Document management state
+  const [uploadedFiles, setUploadedFiles] = useState<DocumentFile[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  
+  // Document preview modal state
+  const [previewModal, setPreviewModal] = useState<{
+    isOpen: boolean;
+    document: DocumentFile | null;
+    documentName: string;
+  }>({
+    isOpen: false,
+    document: null,
+    documentName: ''
+  });
+  
+  // Bulk upload modal state
+  const [bulkUploadModal, setBulkUploadModal] = useState<{
+    isOpen: boolean;
+    template: string;
+    uploadedFile: File | null;
+    previewData: any[];
+    isProcessing: boolean;
+  }>({
+    isOpen: false,
+    template: 'equipment',
+    uploadedFile: null,
+    previewData: [],
+    isProcessing: false
+  });
+  const [vdcrData, setVdcrData] = useState<VDCRRecord[]>([
+    {
+      id: "1",
+      srNo: "001",
+      equipmentTagNo: ["HE-UNIT-001"],
+      mfgSerialNo: ["HE-001-2024-REL"],
+      jobNo: ["JOB-2024-001"],
+      clientDocNo: "REL-HE-001-GA-001",
+      internalDocNo: "INT-GA-HE-001-2024",
+      documentName: "General Assembly Drawing",
+      revision: "Rev-02",
+      codeStatus: "Code 2",
+      status: "approved",
+      lastUpdate: "Jul 10, 2024",
+      remarks: "General assembly drawing for heat exchanger unit",
+      updatedBy: "John Doe",
+      documentFile: {
+        id: "doc-1",
+        fileName: "HE-001-GA-001.pdf",
+        originalName: "General Assembly Drawing.pdf",
+        fileType: "pdf",
+        fileSize: 2048576,
+        uploadDate: "Jul 10, 2024",
+        uploadedBy: "John Doe",
+        filePath: "/documents/vdcr/HE-001-GA-001.pdf"
+      },
+      documentUrl: "/documents/vdcr/HE-001-GA-001.pdf"
+    },
+    {
+      id: "2",
+      srNo: "002",
+      equipmentTagNo: ["HE-UNIT-001", "HE-UNIT-002", "HE-UNIT-003"],
+      mfgSerialNo: ["HE-001-2024-REL", "HE-002-2024-REL", "HE-003-2024-REL"],
+      jobNo: ["JOB-2024-001", "JOB-2024-002", "JOB-2024-003"],
+      clientDocNo: "REL-HE-ALL-PQP-001",
+      internalDocNo: "INT-PQP-HE-ALL-2024",
+      documentName: "Project Quality Plan",
+      revision: "Rev-01",
+      codeStatus: "Code 3",
+      status: "sent-for-approval",
+      lastUpdate: "Jul 12, 2024",
+      remarks: "Quality plan covering all heat exchanger units",
+      updatedBy: "Sarah Wilson",
+      documentFile: {
+        id: "doc-2",
+        fileName: "HE-ALL-PQP-001.docx",
+        originalName: "Project Quality Plan.docx",
+        fileType: "docx",
+        fileSize: 1536000,
+        uploadDate: "Jul 12, 2024",
+        uploadedBy: "Sarah Wilson",
+        filePath: "/documents/vdcr/HE-ALL-PQP-001.docx"
+      },
+      documentUrl: "/documents/vdcr/HE-ALL-PQP-001.docx"
+    },
+    {
+      id: "3",
+      srNo: "003",
+      equipmentTagNo: ["HE-UNIT-001", "HE-UNIT-002", "HE-UNIT-003", "HE-UNIT-004", "HE-UNIT-005"],
+      mfgSerialNo: ["HE-001-2024-REL", "HE-002-2024-REL", "HE-003-2024-REL", "HE-004-2024-REL", "HE-005-2024-REL"],
+      jobNo: ["JOB-2024-001", "JOB-2024-002", "JOB-2024-003", "JOB-2024-004", "JOB-2024-005"],
+      clientDocNo: "REL-HE-ALL-MTC-001",
+      internalDocNo: "INT-MTC-HE-ALL-2024",
+      documentName: "Material Test Certificate SS 316L Plates",
+      revision: "Rev-01",
+      codeStatus: "Code 1",
+      status: "received-for-comment",
+      lastUpdate: "Jul 08, 2024",
+      remarks: "Material test certificates for SS 316L plates",
+      updatedBy: "Mike Johnson",
+      documentFile: {
+        id: "doc-3",
+        fileName: "HE-ALL-MTC-001.pdf",
+        originalName: "Material Test Certificate SS 316L Plates.pdf",
+        fileType: "pdf",
+        fileSize: 1873408,
+        uploadDate: "Jul 08, 2024",
+        uploadedBy: "Mike Johnson",
+        filePath: "/documents/vdcr/HE-ALL-MTC-001.pdf"
+      },
+      documentUrl: "/documents/vdcr/HE-ALL-MTC-001.pdf"
+    },
+    {
+      id: "4",
+      srNo: "004",
+      equipmentTagNo: ["HE-UNIT-001", "HE-UNIT-002"],
+      mfgSerialNo: ["HE-001-2024-REL", "HE-002-2024-REF"],
+      jobNo: ["JOB-2024-001", "JOB-2024-002"],
+      clientDocNo: "REL-HE-GRP1-IOM-001",
+      internalDocNo: "INT-IOM-HE-GRP1-2024",
+      documentName: "Installation & Operation Manual - Group 1",
+      revision: "Rev-00",
+      codeStatus: "Code 4",
+      status: "sent-for-approval",
+      lastUpdate: "Jul 14, 2024",
+      remarks: "Installation manual for group 1 heat exchangers",
+      updatedBy: "Lisa Chen",
+      documentFile: {
+        id: "doc-4",
+        fileName: "HE-GRP1-IOM-001.pdf",
+        originalName: "Installation & Operation Manual - Group 1.pdf",
+        fileType: "pdf",
+        fileSize: 3240960,
+        uploadDate: "Jul 14, 2024",
+        uploadedBy: "Lisa Chen",
+        filePath: "/documents/vdcr/HE-GRP1-IOM-001.pdf"
+      },
+      documentUrl: "/documents/vdcr/HE-GRP1-IOM-001.pdf"
+    },
+    {
+      id: "5",
+      srNo: "005",
+      equipmentTagNo: ["HE-UNIT-001", "HE-UNIT-002", "HE-UNIT-003", "HE-UNIT-004"],
+      mfgSerialNo: ["HE-001-2024-REL", "HE-002-2024-REL", "HE-003-2024-REL", "HE-004-2024-REL"],
+      jobNo: ["JOB-2024-001", "JOB-2024-002", "JOB-2024-003", "JOB-2024-004"],
+      clientDocNo: "REL-HE-ALL-WPS-001",
+      internalDocNo: "INT-WPS-HE-ALL-2024",
+      documentName: "Welding Procedure Specification - All Heat Exchanger",
+      revision: "Rev-02",
+      codeStatus: "Code 2",
+      status: "approved",
+      lastUpdate: "Jul 16, 2024",
+      remarks: "Welding procedure specification for all heat exchangers",
+      updatedBy: "David Brown",
+      documentFile: {
+        id: "doc-5",
+        fileName: "HE-ALL-WPS-001.pdf",
+        originalName: "Welding Procedure Specification - All Heat Exchanger.pdf",
+        fileType: "pdf",
+        fileSize: 2150400,
+        uploadDate: "Jul 16, 2024",
+        uploadedBy: "David Brown",
+        filePath: "/documents/vdcr/HE-ALL-WPS-001.pdf"
+      },
+      documentUrl: "/documents/vdcr/HE-ALL-WPS-001.pdf"
+    }
+  ]);
+
+  // Mock equipment data - you can replace this with real data
+  const mockEquipments: Equipment[] = [
+    { tagNo: "HE-UNIT-001", mfgSerialNo: "HE-001-2024-REL", jobNo: "JOB-2024-001", type: "Heat Exchanger", location: "Shop Floor A", status: "Active" },
+    { tagNo: "HE-UNIT-002", mfgSerialNo: "HE-002-2024-REL", jobNo: "JOB-2024-002", type: "Heat Exchanger", location: "Shop Floor B", status: "Active" },
+    { tagNo: "HE-UNIT-003", mfgSerialNo: "HE-003-2024-REL", jobNo: "JOB-2024-003", type: "Heat Exchanger", location: "Assembly Area", status: "Active" },
+    { tagNo: "HE-UNIT-004", mfgSerialNo: "HE-004-2024-REL", jobNo: "JOB-2024-004", type: "Heat Exchanger", location: "Testing Bay", status: "Testing" },
+    { tagNo: "HE-UNIT-005", mfgSerialNo: "HE-005-2024-REL", jobNo: "JOB-2024-005", type: "Heat Exchanger", location: "Completed Bay", status: "Completed" },
+    { tagNo: "PV-UNIT-001", mfgSerialNo: "PV-001-2024-REL", jobNo: "JOB-2024-006", type: "Pressure Vessel", location: "Shop Floor C", status: "Active" },
+    { tagNo: "PV-UNIT-002", mfgSerialNo: "PV-002-2024-REL", jobNo: "JOB-2024-007", type: "Pressure Vessel", location: "Shop Floor D", status: "Active" },
+    { tagNo: "ST-UNIT-001", mfgSerialNo: "ST-001-2024-REL", jobNo: "JOB-2024-008", type: "Storage Tank", location: "Assembly Area", status: "Active" },
+    { tagNo: "RV-UNIT-001", mfgSerialNo: "RV-001-2024-REL", jobNo: "JOB-2024-009", type: "Reactor Vessel", location: "Shop Floor E", status: "Active" },
+  ];
+
+  // Mock VDCR data is now managed in state above
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'bg-green-50 text-green-700 border border-green-200';
+      case 'sent-for-approval':
+        return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
+      case 'received-for-comment':
+        return 'bg-orange-50 text-orange-700 border border-orange-200';
+      case 'pending':
+        return 'bg-gray-50 text-gray-700 border border-gray-200';
+      case 'rejected':
+        return 'bg-red-50 text-red-700 border border-red-200';
+      default:
+        return 'bg-gray-50 text-gray-700 border border-gray-200';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return 'Approved';
+      case 'sent-for-approval':
+        return 'Sent for Approval';
+      case 'received-for-comment':
+        return 'Received for Comment';
+      case 'pending':
+        return 'Pending';
+      case 'rejected':
+        return 'Rejected';
+      default:
+        return status;
+    }
+  };
+
+  const getCodeStatusColor = (codeStatus: string) => {
+    switch (codeStatus) {
+      case 'Code 1':
+        return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'Code 2':
+        return 'bg-green-50 text-green-700 border border-green-200';
+      case 'Code 3':
+        return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
+      case 'Code 4':
+        return 'bg-purple-50 text-purple-700 border border-purple-200';
+      default:
+        return 'bg-gray-50 text-gray-700 border border-gray-200';
+    }
+  };
+
+  const handleEditVDCR = (record: VDCRRecord) => {
+    setEditingVDCR(record);
+    setIsAddingNew(false);
+    setSelectedEquipments(record.equipmentTagNo);
+    setFormData({
+      srNo: record.srNo,
+      revision: record.revision,
+      documentName: record.documentName,
+      clientDocNo: record.clientDocNo,
+      internalDocNo: record.internalDocNo,
+      codeStatus: record.codeStatus,
+      status: record.status,
+      remarks: ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleAddNewVDCR = () => {
+    setEditingVDCR(null);
+    setIsAddingNew(true);
+    setSelectedEquipments([]);
+    
+    // Auto-generate next Sr. No.
+    const existingSrNos = vdcrData.map(record => {
+      const srNoStr = record.srNo.toString();
+      const match = srNoStr.match(/\d+/);
+      return match ? parseInt(match[0]) : 0;
+    });
+    const nextSrNo = Math.max(...existingSrNos, 0) + 1;
+    const autoGeneratedSrNo = String(nextSrNo).padStart(3, '0');
+    
+    setFormData({
+      srNo: autoGeneratedSrNo,
+      revision: 'Rev-00',
+      documentName: '',
+      clientDocNo: '',
+      internalDocNo: '',
+      codeStatus: 'Code 3',
+      status: 'pending',
+      remarks: ''
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveChanges = () => {
+    // Validate required fields
+    if (!formData.srNo || !formData.documentName || !formData.clientDocNo || !formData.internalDocNo || selectedEquipments.length === 0) {
+      alert('Please fill in all required fields and select at least one equipment.');
+      return;
+    }
+
+    // Get selected equipment details
+    const selectedEquipmentDetails = getSelectedEquipmentDetails();
+    const newMfgSerialNos = selectedEquipmentDetails.map(eq => eq.mfgSerialNo);
+    const newJobNos = selectedEquipmentDetails.map(eq => eq.jobNo);
+
+    if (isAddingNew) {
+      // Create new VDCR record
+      const newVDCR: VDCRRecord = {
+        id: `vdcr-${Date.now()}`,
+        srNo: formData.srNo,
+        equipmentTagNo: selectedEquipments,
+        mfgSerialNo: newMfgSerialNos,
+        jobNo: newJobNos,
+        revision: formData.revision,
+        documentName: formData.documentName,
+        clientDocNo: formData.clientDocNo,
+        internalDocNo: formData.internalDocNo,
+        codeStatus: formData.codeStatus,
+        status: formData.status as any,
+        lastUpdate: new Date().toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: '2-digit', 
+          year: 'numeric' 
+        }),
+        remarks: formData.remarks,
+        updatedBy: currentUser,
+        documentUrl: uploadedFiles.length > 0 ? uploadedFiles[0].filePath : undefined,
+        documentFile: uploadedFiles.length > 0 ? uploadedFiles[0] : undefined
+      };
+
+      // Add new record to VDCR data
+      setVdcrData(prev => [...prev, newVDCR]);
+    } else {
+      // Update existing VDCR record
+      if (!editingVDCR) return;
+
+      const updatedVDCR: VDCRRecord = {
+        ...editingVDCR,
+        srNo: formData.srNo,
+        equipmentTagNo: selectedEquipments,
+        mfgSerialNo: newMfgSerialNos,
+        jobNo: newJobNos,
+        revision: formData.revision,
+        documentName: formData.documentName,
+        clientDocNo: formData.clientDocNo,
+        internalDocNo: formData.internalDocNo,
+        codeStatus: formData.codeStatus,
+        status: formData.status as any,
+        remarks: formData.remarks,
+        updatedBy: currentUser,
+        lastUpdate: new Date().toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: '2-digit', 
+          year: 'numeric' 
+        }),
+        documentUrl: uploadedFiles.length > 0 ? uploadedFiles[0].filePath : editingVDCR.documentUrl,
+        documentFile: uploadedFiles.length > 0 ? uploadedFiles[0] : editingVDCR.documentFile
+      };
+
+      // Update the VDCR data
+      setVdcrData(prev => prev.map(item => 
+        item.id === editingVDCR.id ? updatedVDCR : item
+      ));
+    }
+
+    // Close modal and reset
+    setIsEditModalOpen(false);
+    setEditingVDCR(null);
+    setIsAddingNew(false);
+    setSelectedEquipments([]);
+    setUploadedFiles([]);
+    setFormData({
+      srNo: '',
+      revision: '',
+      documentName: '',
+      clientDocNo: '',
+      internalDocNo: '',
+      codeStatus: '',
+      status: '',
+      remarks: ''
+    });
+  };
+
+  const handleDeleteVDCR = (recordId: string) => {
+    if (window.confirm('Are you sure you want to delete this VDCR record? This action cannot be undone.')) {
+      setVdcrData(prev => prev.filter(item => item.id !== recordId));
+    }
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    
+    // Simulate file upload process
+    setTimeout(() => {
+      const uploadedFile = files[0];
+      const fileType = uploadedFile.name.toLowerCase().includes('.pdf') ? 'pdf' :
+                      uploadedFile.name.toLowerCase().includes('.docx') ? 'docx' :
+                      uploadedFile.name.toLowerCase().includes('.xlsx') ? 'xlsx' :
+                      uploadedFile.name.toLowerCase().includes('.pptx') ? 'pptx' :
+                      uploadedFile.name.toLowerCase().match(/\.(jpg|jpeg|png|gif)$/) ? 'image' : 'other';
+
+      const newDocument: DocumentFile = {
+        id: `doc-${Date.now()}`,
+        fileName: uploadedFile.name,
+        originalName: uploadedFile.name,
+        fileType: fileType as any,
+        fileSize: uploadedFile.size,
+        uploadDate: new Date().toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: '2-digit', 
+          year: 'numeric' 
+        }),
+        uploadedBy: currentUser,
+        filePath: `/documents/vdcr/${uploadedFile.name}`
+      };
+
+      setUploadedFiles(prev => [...prev, newDocument]);
+      setIsUploading(false);
+      
+      // Update the form data with the new document
+      setFormData(prev => ({ ...prev, documentName: uploadedFile.name }));
+    }, 1500); // Simulate upload delay
+  };
+
+  const openDocumentPreview = (documentUrl: string, documentName: string) => {
+    // Find the document file from the uploaded files or mock data
+    const document = uploadedFiles.find(f => f.filePath === documentUrl) || 
+                    vdcrData.find(r => r.documentUrl === documentUrl)?.documentFile;
+    
+    setPreviewModal({
+      isOpen: true,
+      document: document || null,
+      documentName: documentName
+    });
+  };
+
+  // Standard VDCR Template for bulk upload
+  const vdcrTemplate = {
+    name: 'VDCR Template',
+    description: 'Standard template for Vendor Document Control Records',
+    columns: ['Sr. No.', 'Equipment Tag No.', 'Document Name', 'Revision', 'Code Status', 'Status', 'Client Doc No.', 'Internal Doc No.', 'Remarks'],
+    sampleData: [
+      ['001', 'HE-UNIT-001', 'General Assembly Drawing', 'Rev-01', 'Code 2', 'pending', 'REL-HE-001-GA-001', 'INT-GA-HE-001-2024', 'Equipment assembly drawing'],
+      ['002', 'HE-UNIT-002', 'Installation Manual', 'Rev-00', 'Code 3', 'sent-for-approval', 'REL-HE-002-IM-001', 'INT-IM-HE-002-2024', 'Installation instructions'],
+      ['003', 'ST-UNIT-001', 'Storage Tank Specification', 'Rev-01', 'Code 1', 'approved', 'REL-ST-001-SPEC-001', 'INT-SPEC-ST-001-2024', 'Storage tank specifications']
+    ]
+  };
+
+  const handleBulkUpload = () => {
+    setBulkUploadModal(prev => ({ ...prev, isOpen: true }));
+  };
+
+  const downloadTemplate = () => {
+    // For now, we'll create a CSV with clear instructions
+    // In a real implementation, this would be an Excel file with dropdowns
+    const csvContent = [
+      vdcrTemplate.columns.join(','),
+      ...vdcrTemplate.sampleData.map(row => row.join(',')),
+      '',
+      'IMPORTANT NOTES:',
+      '1. Code Status must be exactly: Code 1, Code 2, Code 3, or Code 4',
+      '2. Status must be exactly: pending, sent-for-approval, received-for-comment, approved, or rejected',
+      '3. Equipment Tag No. will auto-fill Mfg Serial No. and Job No. from database',
+      '4. Avoid using "-" or extra spaces in status fields'
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${vdcrTemplate.name.replace(/\s+/g, '_')}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleFileUploadForBulk = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setBulkUploadModal(prev => ({ ...prev, uploadedFile: file }));
+    
+    // Process CSV file
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const csvContent = e.target?.result as string;
+      const lines = csvContent.split('\n');
+      const headers = lines[0].split(',');
+      const data = lines.slice(1).filter(line => line.trim()).map(line => {
+        const values = line.split(',');
+        return headers.reduce((obj, header, index) => {
+          obj[header.trim()] = values[index]?.trim() || '';
+          return obj;
+        }, {} as any);
+      });
+      
+      setBulkUploadModal(prev => ({ ...prev, previewData: data }));
+    };
+    reader.readAsText(file);
+  };
+
+  const processBulkUpload = () => {
+    setBulkUploadModal(prev => ({ ...prev, isProcessing: true }));
+    
+    // Simulate processing delay
+    setTimeout(() => {
+      // Find the highest existing Sr. No. to continue from
+      const existingSrNos = vdcrData.map(record => {
+        const srNoStr = record.srNo.toString();
+        // Extract just the numeric part, handle formats like "001", "Rev-01", etc.
+        const match = srNoStr.match(/\d+/);
+        return match ? parseInt(match[0]) : 0;
+      });
+      
+      const highestSrNo = Math.max(...existingSrNos, 0);
+      console.log('Highest existing Sr. No.:', highestSrNo);
+      
+      const newRecords = bulkUploadModal.previewData.map((row, index) => {
+        const equipmentTag = row['Equipment Tag No.']?.trim();
+        
+        // Auto-fill equipment-related fields from database if equipment tag exists
+        let autoFilledData = {
+          mfgSerialNo: ['AUTO-GENERATED'],
+          jobNo: ['AUTO-GENERATED']
+        };
+        
+        if (equipmentTag) {
+          // Find equipment in our mock database
+          const equipment = mockEquipments.find(eq => eq.tagNo === equipmentTag);
+          if (equipment) {
+            autoFilledData = {
+              mfgSerialNo: [equipment.mfgSerialNo],
+              jobNo: [equipment.jobNo]
+            };
+          }
+        }
+        
+        // If user provided Sr. No., use it; otherwise continue from highest existing
+        let srNo: string;
+        if (row['Sr. No.']?.trim()) {
+          srNo = row['Sr. No.'].trim();
+        } else {
+          // Continue from the highest existing Sr. No.
+          srNo = String(highestSrNo + index + 1).padStart(3, '0');
+        }
+        
+        console.log(`Row ${index}: Sr. No. = ${srNo} (continuing from ${highestSrNo})`);
+        
+        return {
+          id: `bulk-${Date.now()}-${index}`,
+          srNo: srNo,
+          equipmentTagNo: equipmentTag ? [equipmentTag] : ['GENERIC'],
+          mfgSerialNo: autoFilledData.mfgSerialNo,
+          jobNo: autoFilledData.jobNo,
+          clientDocNo: row['Client Doc No.'] || `CLIENT-${Date.now()}-${index}`,
+          internalDocNo: row['Internal Doc No.'] || `INT-${Date.now()}-${index}`,
+          documentName: row['Document Name'] || `Document ${index + 1}`,
+          revision: row['Revision'] || 'Rev-00',
+          codeStatus: row['Code Status'] || 'Code 3',
+          status: (row['Status'] as any) || 'pending',
+          lastUpdate: new Date().toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: '2-digit', 
+            year: 'numeric' 
+          }),
+          remarks: row['Remarks'] || '',
+          updatedBy: currentUser
+        };
+      });
+
+      setVdcrData(prev => [...prev, ...newRecords]);
+      setBulkUploadModal(prev => ({ 
+        ...prev, 
+        isOpen: false, 
+        isProcessing: false,
+        uploadedFile: null,
+        previewData: []
+      }));
+    }, 2000);
+  };
+
+  const handleEquipmentSelection = (equipmentTag: string, checked: boolean) => {
+    if (checked) {
+      setSelectedEquipments(prev => [...prev, equipmentTag]);
+    } else {
+      setSelectedEquipments(prev => prev.filter(tag => tag !== equipmentTag));
+    }
+  };
+
+  const getSelectedEquipmentDetails = () => {
+    return mockEquipments.filter(eq => selectedEquipments.includes(eq.tagNo));
+  };
+
+  const autoGenerateMfgSerialNos = () => {
+    return getSelectedEquipmentDetails().map(eq => eq.mfgSerialNo);
+  };
+
+  const autoGenerateJobNos = () => {
+    return getSelectedEquipmentDetails().map(eq => eq.jobNo);
+  };
+
+  const toggleEquipmentType = (type: string) => {
+    setExpandedEquipmentTypes(prev => 
+      prev.includes(type) 
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
+  };
+
+  const groupedEquipments = mockEquipments.reduce((acc, equipment) => {
+    if (!acc[equipment.type]) {
+      acc[equipment.type] = [];
+    }
+    acc[equipment.type].push(equipment);
+    return acc;
+  }, {} as Record<string, Equipment[]>);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center">
+          <h2 className="text-xl font-semibold text-foreground">{projectName} - VDCR Management</h2>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 shadow-md hover:shadow-lg transition-all duration-200"
+            onClick={handleBulkUpload}
+          >
+            <FileText size={14} className="mr-2" />
+            Bulk Upload VDCR
+          </Button>
+          
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="bg-white hover:bg-gray-50 text-gray-700 border-gray-300 hover:border-gray-400 hover:text-gray-800"
+            onClick={handleAddNewVDCR}
+          >
+            <Edit size={14} className="mr-2" />
+            Update VDCR
+          </Button>
+          
+          <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold text-gray-800">
+                  {isAddingNew ? 'Add New VDCR Record' : 'Edit VDCR Record'}
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                {/* Equipment Selection Accordion */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Select Equipment</h3>
+                  <div className="space-y-3">
+                    {Object.entries(groupedEquipments).map(([type, equipments]) => (
+                      <div key={type} className="border border-gray-200 rounded-lg">
+                        <button
+                          onClick={() => toggleEquipmentType(type)}
+                          className="w-full p-4 text-left bg-gray-50 hover:bg-gray-100 transition-colors rounded-t-lg flex items-center justify-between"
+                        >
+                          <span className="font-medium text-gray-800">{type}</span>
+                          {expandedEquipmentTypes.includes(type) ? (
+                            <ChevronDown size={20} className="text-gray-600" />
+                          ) : (
+                            <ChevronRight size={20} className="text-gray-600" />
+                          )}
+                        </button>
+                        
+                        {expandedEquipmentTypes.includes(type) && (
+                          <div className="p-4 space-y-2 border-t border-gray-200">
+                            {equipments.map((equipment) => (
+                              <div key={equipment.tagNo} className="flex items-center space-x-3 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
+                                <Checkbox
+                                  id={equipment.tagNo}
+                                  checked={selectedEquipments.includes(equipment.tagNo)}
+                                  onCheckedChange={(checked) => handleEquipmentSelection(equipment.tagNo, checked as boolean)}
+                                />
+                                <Label htmlFor={equipment.tagNo} className="flex-1 cursor-pointer">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-medium text-gray-800">{equipment.tagNo}</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {equipment.status}
+                                    </Badge>
+                                  </div>
+                                  <div className="text-sm text-gray-600 mt-1">
+                                    {equipment.location} • {equipment.mfgSerialNo}
+                                  </div>
+                                </Label>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Document Upload Section */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">Document Management</h3>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="documentUpload">Upload Document</Label>
+                      <div className="mt-2">
+                        <Input
+                          id="documentUpload"
+                          type="file"
+                          accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png,.gif"
+                          onChange={handleFileUpload}
+                          className="cursor-pointer"
+                          disabled={isUploading}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Supported formats: PDF, Word, Excel, PowerPoint, Images (max 50MB)
+                        </p>
+                      </div>
+                    </div>
+
+                    {isUploading && (
+                      <div className="flex items-center space-x-2 text-blue-600">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        <span className="text-sm">Uploading document...</span>
+                      </div>
+                    )}
+
+                    {uploadedFiles.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Uploaded Files:</Label>
+                        <div className="space-y-2">
+                          {uploadedFiles.map((file) => (
+                            <div key={file.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                                  <FileText size={16} className="text-blue-600" />
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-800">{file.originalName}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {file.fileType.toUpperCase()} • {(file.fileSize / 1024 / 1024).toFixed(2)} MB
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openDocumentPreview(file.filePath, file.originalName)}
+                                className="text-xs"
+                              >
+                                Preview
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* VDCR Form */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">VDCR Details</h3>
+                  
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="srNo">Serial Number</Label>
+                        <Input 
+                          id="srNo" 
+                          value={formData.srNo} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, srNo: e.target.value }))}
+                          className="mt-1" 
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="revision">Revision</Label>
+                        <Input 
+                          id="revision" 
+                          value={formData.revision} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, revision: e.target.value }))}
+                          className="mt-1" 
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="documentName">Document Name</Label>
+                      <Input 
+                        id="documentName" 
+                        value={formData.documentName} 
+                        onChange={(e) => setFormData(prev => ({ ...prev, documentName: e.target.value }))}
+                        className="mt-1" 
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="clientDocNo">Client Document No.</Label>
+                        <Input 
+                          id="clientDocNo" 
+                          value={formData.clientDocNo} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, clientDocNo: e.target.value }))}
+                          className="mt-1" 
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="internalDocNo">Internal Document No.</Label>
+                        <Input 
+                          id="internalDocNo" 
+                          value={formData.internalDocNo} 
+                          onChange={(e) => setFormData(prev => ({ ...prev, internalDocNo: e.target.value }))}
+                          className="mt-1" 
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="codeStatus">Code Status</Label>
+                        <Select 
+                          value={formData.codeStatus} 
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, codeStatus: value }))}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select Code Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Code 1">Code 1: Critical</SelectItem>
+                            <SelectItem value="Code 2">Code 2: Important</SelectItem>
+                            <SelectItem value="Code 3">Code 3: Standard</SelectItem>
+                            <SelectItem value="Code 4">Code 4: Reference</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="status">Status</Label>
+                        <Select 
+                          value={formData.status} 
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select Status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="sent-for-approval">Sent for Approval</SelectItem>
+                            <SelectItem value="received-for-comment">Received for Comment</SelectItem>
+                            <SelectItem value="approved">Approved</SelectItem>
+                            <SelectItem value="rejected">Rejected</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="remarks">Remarks</Label>
+                      <Textarea 
+                        id="remarks" 
+                        value={formData.remarks}
+                        onChange={(e) => setFormData(prev => ({ ...prev, remarks: e.target.value }))}
+                        placeholder="Add any additional remarks..." 
+                        className="mt-1" 
+                        rows={3} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* Auto-generated Equipment Details */}
+                  {selectedEquipments.length > 0 && (
+                    <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="font-medium text-blue-800 mb-3">Selected Equipment Details</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-blue-700">Equipment Tags:</span>
+                          <span className="font-medium">{selectedEquipments.join(', ')}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-blue-700">Mfg Serial Nos:</span>
+                          <span className="font-medium">{autoGenerateMfgSerialNos().join(', ')}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-blue-700">Job Nos:</span>
+                          <span className="font-medium">{autoGenerateJobNos().join(', ')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end space-x-3 mt-8 pt-6 border-t border-gray-200">
+                <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSaveChanges}>
+                  <Check size={16} className="mr-2" />
+                  {isAddingNew ? 'Add VDCR Record' : 'Save Changes'}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          {/* Bulk Upload Modal */}
+          <Dialog open={bulkUploadModal.isOpen} onOpenChange={(open) => setBulkUploadModal(prev => ({ ...prev, isOpen: open }))}>
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold text-gray-800">
+                  Bulk Upload VDCR Records
+                </DialogTitle>
+                <p className="text-gray-600 mt-2">
+                  Upload multiple VDCR records using predefined templates
+                </p>
+              </DialogHeader>
+              
+              <div className="space-y-6 mt-6">
+                {/* Template Information */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800">VDCR Template</h3>
+                  <div className="p-4 border border-gray-200 rounded-lg bg-gray-50">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-gray-800">{vdcrTemplate.name}</h4>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={downloadTemplate}
+                        className="bg-blue-50 hover:bg-blue-100 border-blue-200 hover:border-blue-300 text-blue-700"
+                      >
+                        <Download size={14} className="mr-2" />
+                        Download Sample Template
+                      </Button>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3">{vdcrTemplate.description}</p>
+                    <div className="text-xs text-gray-500">
+                      <p><strong>Columns:</strong> {vdcrTemplate.columns.join(', ')}</p>
+                      <p><strong>Features:</strong></p>
+                      <ul className="list-disc list-inside ml-2 space-y-1">
+                        <li>Sr. No. → Use your own numbers or leave blank to continue from last entry</li>
+                        <li>Equipment Tag No. → Auto-fills Mfg Serial No. & Job No. from database</li>
+                        <li>CSV Format → Simple and reliable file format</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* File Upload */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold text-gray-800">Upload CSV File</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="bulkFileUpload">Select CSV File</Label>
+                      <div className="mt-2">
+                        <Input
+                          id="bulkFileUpload"
+                          type="file"
+                          accept=".csv"
+                          onChange={handleFileUploadForBulk}
+                          className="cursor-pointer"
+                          disabled={bulkUploadModal.isProcessing}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Upload CSV file (.csv recommended) matching the template format
+                        </p>
+                      </div>
+                    </div>
+
+                    {bulkUploadModal.uploadedFile && (
+                      <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center space-x-2 text-green-700">
+                          <FileText size={16} />
+                          <span className="text-sm font-medium">
+                            File uploaded: {bulkUploadModal.uploadedFile.name}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Data Preview */}
+                {bulkUploadModal.previewData.length > 0 && (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800">Data Preview</h3>
+                    <div className="border rounded-lg overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              {Object.keys(bulkUploadModal.previewData[0]).map((header) => (
+                                <th key={header} className="px-4 py-2 text-left text-sm font-medium text-gray-700 border-b">
+                                  {header}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bulkUploadModal.previewData.slice(0, 5).map((row, index) => (
+                              <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                {Object.values(row).map((value, cellIndex) => (
+                                  <td key={cellIndex} className="px-4 py-2 text-sm text-gray-600 border-b">
+                                    {String(value) || '-'}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {bulkUploadModal.previewData.length > 5 && (
+                        <div className="p-3 bg-gray-50 text-center text-sm text-gray-600 border-t">
+                          Showing first 5 rows of {bulkUploadModal.previewData.length} total rows
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Processing Status */}
+                {bulkUploadModal.isProcessing && (
+                  <div className="text-center py-6">
+                    <div className="flex items-center justify-center space-x-3 text-blue-600">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                      <span className="text-lg font-medium">Processing bulk upload...</span>
+                    </div>
+                    <p className="text-gray-600 mt-2">Please wait while we import your VDCR records</p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end space-x-3 pt-6 border-t border-gray-200">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setBulkUploadModal(prev => ({ ...prev, isOpen: false }))}
+                  disabled={bulkUploadModal.isProcessing}
+                >
+                  Cancel
+                </Button>
+                {bulkUploadModal.previewData.length > 0 && !bulkUploadModal.isProcessing && (
+                  <Button 
+                    onClick={processBulkUpload}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    <FileText size={16} className="mr-2" />
+                    Import {bulkUploadModal.previewData.length} Records
+                  </Button>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          {/* Document Preview Modal */}
+          <Dialog open={previewModal.isOpen} onOpenChange={(open) => setPreviewModal(prev => ({ ...prev, isOpen: open }))}>
+            <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+              <DialogHeader>
+                <DialogTitle className="flex items-center space-x-2">
+                  <FileText size={20} className="text-blue-600" />
+                  <span>Document Preview: {previewModal.documentName}</span>
+                </DialogTitle>
+              </DialogHeader>
+              
+              <div className="flex-1 overflow-hidden">
+                {previewModal.document ? (
+                  <div className="space-y-4">
+                    {/* Document Info */}
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium text-gray-700">File Name:</span>
+                          <p className="text-gray-600">{previewModal.document.originalName}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">File Type:</span>
+                          <p className="text-gray-600">{previewModal.document.fileType.toUpperCase()}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">File Size:</span>
+                          <p className="text-gray-600">{(previewModal.document.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">Uploaded By:</span>
+                          <p className="text-gray-600">{previewModal.document.uploadedBy}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">Upload Date:</span>
+                          <p className="text-gray-600">{previewModal.document.uploadDate}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-gray-700">Document ID:</span>
+                          <p className="text-gray-600">{previewModal.document.id}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Mock Document Content */}
+                    <div className="bg-white border rounded-lg p-6 min-h-[400px]">
+                      <div className="text-center space-y-4">
+                        <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+                          <FileText size={32} className="text-blue-600" />
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-800">{previewModal.documentName}</h3>
+                        <p className="text-gray-600">
+                          This is a preview of the document "{previewModal.document.originalName}"
+                        </p>
+                        <div className="text-sm text-gray-500">
+                          <p>File Type: {previewModal.document.fileType.toUpperCase()}</p>
+                          <p>Size: {(previewModal.document.fileSize / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                        
+                        {/* Mock content based on file type */}
+                        {previewModal.document.fileType === 'pdf' && (
+                          <div className="bg-gray-50 p-4 rounded-lg text-left">
+                            <h4 className="font-medium text-gray-800 mb-2">PDF Document Preview</h4>
+                            <p className="text-sm text-gray-600 mb-2">This would show the actual PDF content with zoom, navigation, and annotation tools.</p>
+                            <p className="text-sm text-gray-600">Features: Zoom in/out, Page navigation, Text search, Annotations, Download</p>
+                          </div>
+                        )}
+                        
+                        {previewModal.document.fileType === 'docx' && (
+                          <div className="bg-gray-50 p-4 rounded-lg text-left">
+                            <h4 className="font-medium text-gray-800 mb-2">Word Document Preview</h4>
+                            <p className="text-sm text-gray-600 mb-2">This would show the actual Word document content with editing capabilities.</p>
+                            <p className="text-sm text-gray-600">Features: Text editing, Formatting, Comments, Track changes, Download</p>
+                          </div>
+                        )}
+                        
+                        {previewModal.document.fileType === 'image' && (
+                          <div className="bg-gray-50 p-4 rounded-lg text-left">
+                            <h4 className="font-medium text-gray-800 mb-2">Image Preview</h4>
+                            <p className="text-sm text-gray-600 mb-2">This would show the actual image with zoom and pan capabilities.</p>
+                            <p className="text-sm text-gray-600">Features: Zoom in/out, Pan, Rotate, Download, Full screen</p>
+                          </div>
+                        )}
+                        
+                        {previewModal.document.fileType === 'other' && (
+                          <div className="bg-gray-50 p-4 rounded-lg text-left">
+                            <h4 className="font-medium text-gray-800 mb-2">Document Preview</h4>
+                            <p className="text-sm text-gray-600 mb-2">This document type requires a compatible viewer.</p>
+                            <p className="text-sm text-gray-600">Features: Download, File info, Compatibility check</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <FileText size={32} className="text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2">Document Not Found</h3>
+                    <p className="text-gray-600">The document file information could not be retrieved.</p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
+                {previewModal.document && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => window.open(previewModal.document!.filePath, '_blank')}
+                    className="bg-green-50 hover:bg-green-100 border-green-200 text-green-700"
+                  >
+                    <Download size={16} className="mr-2" />
+                    Download Full Document
+                  </Button>
+                )}
+                <Button onClick={() => setPreviewModal(prev => ({ ...prev, isOpen: false }))}>
+                  Close Preview
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
+          <Button size="sm" variant="outline">
+            <Download size={14} className="mr-2" />
+            Export to Excel
+          </Button>
+        </div>
+      </div>
+
+      <Card className="overflow-hidden border-0 shadow-lg bg-gradient-to-br from-white to-gray-50/50">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1800px]">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 text-white shadow-lg">
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 bg-blue-600/90 sticky left-0 z-20 min-w-[60px] backdrop-blur-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Sr. No.</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 bg-blue-600/90 sticky left-[60px] z-20 min-w-[120px] backdrop-blur-sm">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Equipment Tag</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[140px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Mfg Serial</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[120px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Job No.</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[150px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Client Doc</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[150px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Internal Doc</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[200px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Document Name</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[80px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Rev</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[100px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Code</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[120px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Status</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[200px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Remarks</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[200px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Updated On</span>
+                  </div>
+                </th>
+                <th className="px-4 py-4 text-left text-sm font-semibold border-b border-blue-400/30 min-w-[100px]">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                    <span>Actions</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {vdcrData.map((record, index) => (
+                <tr 
+                  key={record.id} 
+                  className={`group hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all duration-300 border-b border-gray-100 ${
+                    index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
+                  }`}
+                >
+                  <td className="px-4 py-3 text-sm font-semibold sticky left-0 z-10 bg-inherit border-r border-blue-200/30">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white text-xs font-bold">
+                        {record.srNo}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm sticky left-[60px] z-10 bg-inherit border-r border-blue-200/30">
+                    <div className="flex flex-wrap gap-2">
+                      {record.equipmentTagNo.map((tag, tagIndex) => (
+                        <span key={tagIndex} className="text-xs bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 px-3 py-1.5 rounded-full border border-gray-200 whitespace-nowrap font-medium shadow-sm">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      {record.mfgSerialNo.map((serial, serialIndex) => (
+                        <span key={serialIndex} className="text-xs bg-gradient-to-r from-purple-50 to-purple-100 text-purple-700 px-3 py-1.5 rounded-lg border border-purple-200 font-mono whitespace-nowrap shadow-sm">
+                          {serial}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex flex-wrap gap-2">
+                      {record.jobNo.map((job, jobIndex) => (
+                        <span key={jobIndex} className="text-xs bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 font-mono whitespace-nowrap shadow-sm">
+                          {job}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className="text-xs bg-gradient-to-r from-red-50 to-red-100 text-red-700 px-3 py-1.5 rounded-lg border border-red-200 font-mono whitespace-nowrap shadow-sm">
+                      {record.clientDocNo}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <span className="text-xs bg-gradient-to-r from-orange-50 to-orange-100 text-orange-700 px-3 py-1.5 rounded-lg border border-orange-200 font-mono whitespace-nowrap shadow-sm">
+                      {record.internalDocNo}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex items-center group-hover:scale-105 transition-transform duration-200">
+                      <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center mr-3 shadow-md">
+                        <FileText size={16} className="text-white" />
+                      </div>
+                      {record.documentUrl ? (
+                        <button
+                          onClick={() => openDocumentPreview(record.documentUrl!, record.documentName)}
+                          className="truncate whitespace-nowrap font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition-colors"
+                          title={`Click to preview: ${record.documentName}`}
+                        >
+                          {record.documentName}
+                        </button>
+                      ) : (
+                        <span className="truncate whitespace-nowrap font-medium text-gray-800">{record.documentName}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <Badge variant="outline" className="text-xs whitespace-nowrap bg-white border-2 border-gray-300 shadow-sm">
+                      {record.revision}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <Badge className={`text-xs whitespace-nowrap ${getCodeStatusColor(record.codeStatus)} shadow-md`}>
+                      {record.codeStatus}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <Badge className={`text-xs whitespace-nowrap ${getStatusColor(record.status)} shadow-md`}>
+                      {getStatusText(record.status)}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="max-w-[200px]">
+                      <span className="text-sm text-gray-700 leading-relaxed">
+                        {record.remarks || 'No remarks'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                      <span className="font-medium">{record.lastUpdate}</span>
+                      <div className="flex items-center space-x-2">
+                        <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-sm">
+                          <span className="text-white text-xs font-bold">
+                            {record.updatedBy ? record.updatedBy.split(' ').map(n => n[0]).join('') : 'U'}
+                          </span>
+                        </div>
+                        <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                          {record.updatedBy || 'Unknown'}
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 px-3 text-xs bg-white hover:bg-blue-50 border-blue-200 hover:border-blue-300 transition-all duration-200 shadow-sm"
+                        onClick={() => handleEditVDCR(record)}
+                      >
+                        <Edit size={12} className="mr-1" />
+                        Edit
+                      </Button>
+                      {record.documentUrl && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className="h-8 px-3 text-xs bg-white hover:bg-green-50 border-green-200 hover:border-green-300 transition-all duration-200 shadow-sm"
+                          onClick={() => window.open(record.documentUrl, '_blank')}
+                          title="Download document"
+                        >
+                          <Download size={12} className="mr-1" />
+                          Download
+                        </Button>
+                      )}
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="h-8 px-3 text-xs bg-white hover:bg-red-50 border-red-200 hover:border-red-300 transition-all duration-200 shadow-sm"
+                        onClick={() => handleDeleteVDCR(record.id)}
+                      >
+                        <X size={12} className="mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <div className="mt-6 pt-4 border-t border-gray-200">
+        <div className="flex items-center justify-center space-x-8">
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-blue-500 rounded-sm"></div>
+            <span className="text-sm text-gray-600">Code 1: Critical</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-green-500 rounded-sm"></div>
+            <span className="text-sm text-gray-600">Code 2: Important</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-yellow-500 rounded-sm"></div>
+            <span className="text-sm text-gray-600">Code 3: Standard</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-3 bg-purple-500 rounded-sm"></div>
+            <span className="text-sm text-gray-600">Code 4: Reference</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ProjectsVDCR; 
